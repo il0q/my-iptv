@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StreamHub — مشغل القنوات</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17"></script>
+<style>
+:root{
+  --bg:#07090d;--panel:#10141b;--panel2:#151a23;--line:#252c38;
+  --text:#f4f7fb;--muted:#8993a3;--accent:#36d399;--danger:#ff5d6c;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:
+ radial-gradient(circle at 15% 0%,rgba(54,211,153,.09),transparent 30%),
+ radial-gradient(circle at 90% 15%,rgba(78,121,255,.08),transparent 28%),
+ var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif}
+button,input{font:inherit}
+button{cursor:pointer}
+header{position:sticky;top:0;z-index:20;background:rgba(7,9,13,.82);backdrop-filter:blur(18px);border-bottom:1px solid rgba(255,255,255,.06)}
+.nav{max-width:1400px;margin:auto;padding:16px 22px;display:flex;align-items:center;gap:20px}
+.logo{font-size:22px;font-weight:900;letter-spacing:-.5px}.logo span{color:var(--accent)}
+.nav small{color:var(--muted);margin-right:auto}
+.wrap{max-width:1400px;margin:auto;padding:24px 22px 50px}
+.hero{margin:8px 0 24px;display:flex;justify-content:space-between;gap:20px;align-items:end}
+h1{font-size:clamp(28px,4vw,48px);margin:0 0 8px;letter-spacing:-1.5px}
+.hero p{margin:0;color:var(--muted)}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:11px 15px;border-radius:12px}
+.btn.primary{background:var(--accent);color:#04120d;border-color:var(--accent);font-weight:800}
+.search{display:flex;gap:10px;margin-bottom:18px}
+.search input{flex:1;background:var(--panel);border:1px solid var(--line);color:white;border-radius:14px;padding:14px 16px;outline:none}
+.search input:focus{border-color:var(--accent)}
+.layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,.75fr);gap:18px}
+.player-card,.side{background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.015));border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.player{aspect-ratio:16/9;background:#000;position:relative}
+video{width:100%;height:100%;display:block;background:#000}
+.empty{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);text-align:center;padding:30px}
+.now{padding:15px 17px;border-top:1px solid var(--line);display:flex;align-items:center;gap:12px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 16px var(--accent)}
+.now strong{display:block}.now span{color:var(--muted);font-size:13px}
+.side-head{padding:15px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.side-head b{font-size:16px}.count{color:var(--muted);font-size:12px}
+.list{height:490px;overflow:auto;padding:8px}
+.channel{width:100%;text-align:right;background:transparent;border:0;color:var(--text);padding:12px;border-radius:12px;display:flex;align-items:center;gap:12px;margin-bottom:3px}
+.channel:hover,.channel.active{background:var(--panel2)}
+.logo-img{width:38px;height:38px;border-radius:9px;object-fit:contain;background:#080b10;border:1px solid var(--line);flex:none}
+.ch-name{overflow:hidden}.ch-name b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ch-name span{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+.filters{display:flex;gap:8px;overflow:auto;padding-bottom:12px}
+.filter{white-space:nowrap;background:var(--panel);border:1px solid var(--line);color:var(--muted);padding:9px 13px;border-radius:999px}
+.filter.active{color:#03120c;background:var(--accent);border-color:var(--accent);font-weight:800}
+.status{margin:14px 0;color:var(--muted);font-size:13px;min-height:20px}
+.error{color:var(--danger)}
+footer{text-align:center;color:var(--muted);font-size:12px;padding:30px}
+@media(max-width:900px){.layout{grid-template-columns:1fr}.list{height:390px}.hero{align-items:start;flex-direction:column}}
+@media(max-width:600px){.wrap{padding:18px 12px 35px}.nav{padding:13px 14px}.nav small{display:none}.search{flex-direction:column}.btn{width:100%}.actions{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <div class="nav">
+    <div class="logo">STREAM<span>HUB</span></div>
+    <small>مشغل قنوات مباشر من المتصفح</small>
+    <button class="btn" id="favBtn">★ المفضلة</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <div>
+      <h1>شاهد القنوات مباشرة</h1>
+      <p>اختر الدولة أو ابحث عن قناة ثم ابدأ المشاهدة.</p>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="allBtn">كل القنوات</button>
+      <button class="btn" id="reloadBtn">↻ تحديث</button>
+      <label class="btn" style="display:inline-flex;align-items:center;gap:8px">
+        📂 استيراد M3U
+        <input id="fileInput" type="file" accept=".m3u,.m3u8,text/plain" hidden>
+      </label>
+    </div>
+  </section>
+
+  <div class="search">
+    <input id="search" type="search" placeholder="ابحث عن اسم القناة أو الدولة...">
+  </div>
+
+  <div class="filters" id="filters"></div>
+  <div class="status" id="status">جاري تجهيز القائمة...</div>
+
+  <section class="layout">
+    <div class="player-card">
+      <div class="player">
+        <video id="video" controls playsinline></video>
+        <div class="empty" id="empty">
+          <div>
+            <div style="font-size:42px;margin-bottom:10px">▶</div>
+            <b>اختر قناة من القائمة</b>
+            <div style="margin-top:6px">سيظهر البث هنا</div>
+          </div>
+        </div>
+      </div>
+      <div class="now">
+        <i class="dot"></i>
+        <div><strong id="nowName">لا توجد قناة</strong><span id="nowMeta">لم يتم اختيار بث بعد</span></div>
+      </div>
+      <div id="playerStatus" style="padding:0 17px 15px;color:#8993a3;font-size:12px"></div>
+    </div>
+
+    <aside class="side">
+      <div class="side-head"><b id="listTitle">القنوات</b><span class="count" id="count">0</span></div>
+      <div class="list" id="list"></div>
+    </aside>
+  </section>
+</main>
+
+<footer>
+  مصادر القنوات العامة قد تتوقف أو تختلف جودتها. الموقع لا يستضيف البث بنفسه.
+</footer>
+
+<script>
+const SOURCES = {
+  "all":"https://iptv-org.github.io/iptv/index.m3u",
+  "om":"https://iptv-org.github.io/iptv/countries/om.m3u",
+  "sa":"https://iptv-org.github.io/iptv/countries/sa.m3u",
+  "ae":"https://iptv-org.github.io/iptv/countries/ae.m3u",
+  "qa":"https://iptv-org.github.io/iptv/countries/qa.m3u",
+  "kw":"https://iptv-org.github.io/iptv/countries/kw.m3u",
+  "bh":"https://iptv-org.github.io/iptv/countries/bh.m3u",
+  "eg":"https://iptv-org.github.io/iptv/countries/eg.m3u",
+  "jo":"https://iptv-org.github.io/iptv/countries/jo.m3u",
+  "ma":"https://iptv-org.github.io/iptv/countries/ma.m3u",
+  "dz":"https://iptv-org.github.io/iptv/countries/dz.m3u",
+  "tn":"https://iptv-org.github.io/iptv/countries/tn.m3u",
+  "ps":"https://iptv-org.github.io/iptv/countries/ps.m3u",
+  "lb":"https://iptv-org.github.io/iptv/countries/lb.m3u",
+  "iq":"https://iptv-org.github.io/iptv/countries/iq.m3u",
+  "sy":"https://iptv-org.github.io/iptv/countries/sy.m3u",
+  "us":"https://iptv-org.github.io/iptv/countries/us.m3u",
+  "gb":"https://iptv-org.github.io/iptv/countries/gb.m3u",
+  "fr":"https://iptv-org.github.io/iptv/countries/fr.m3u",
+  "de":"https://iptv-org.github.io/iptv/countries/de.m3u",
+  "tr":"https://iptv-org.github.io/iptv/countries/tr.m3u",
+  "in":"https://iptv-org.github.io/iptv/countries/in.m3u"
+};
+
+const COUNTRIES = [
+ ["om","🇴🇲 عُمان"],["sa","🇸🇦 السعودية"],["ae","🇦🇪 الإمارات"],["qa","🇶🇦 قطر"],
+ ["kw","🇰🇼 الكويت"],["bh","🇧🇭 البحرين"],["eg","🇪🇬 مصر"],["jo","🇯🇴 الأردن"],
+ ["ma","🇲🇦 المغرب"],["dz","🇩🇿 الجزائر"],["tn","🇹🇳 تونس"],["ps","🇵🇸 فلسطين"],
+ ["lb","🇱🇧 لبنان"],["iq","🇮🇶 العراق"],["sy","🇸🇾 سوريا"],["tr","🇹🇷 تركيا"],
+ ["us","🇺🇸 أمريكا"],["gb","🇬🇧 بريطانيا"],["fr","🇫🇷 فرنسا"],["de","🇩🇪 ألمانيا"],
+ ["in","🇮🇳 الهند"]
+];
+
+let channels=[], currentSource="om", hls=null, favorites=JSON.parse(localStorage.getItem("streamhub-favs")||"[]"), showingFav=false, localMode=false;
+
+const $=id=>document.getElementById(id);
+const normalize=s=>(s||"").toLowerCase().trim();
+
+function setStatus(t,error=false){$("status").textContent=t;$("status").className="status"+(error?" error":"")}
+
+function parseM3U(text){
+  const lines=text.replace(/\r/g,"").split("\n");
+  const result=[];
+  let info=null;
+  for(const raw of lines){
+    const line=raw.trim();
+    if(!line) continue;
+    if(line.startsWith("#EXTINF:")){
+      const comma=line.indexOf(",");
+      const attrs=comma>=0?line.slice(0,comma):line;
+      const name=comma>=0?line.slice(comma+1).trim():"قناة";
+      const get=(key)=>{
+        const m=attrs.match(new RegExp(key+'="([^"]*)"','i'));
+        return m?m[1]:"";
+      };
+      info={name, logo:get("tvg-logo"), country:get("tvg-country"), group:get("group-title")};
+    }else if(!line.startsWith("#") && info){
+      result.push({name:info.name,url:line,logo:info.logo,country:info.country,group:info.group});
+      info=null;
+    }
+  }
+  return result;
+}
+
+async function loadSource(key=currentSource){
+  currentSource=key; showingFav=false; localMode=false;
+  const url=SOURCES[key];
+  if(!url){setStatus("المصدر غير موجود",true);return}
+  $("list").innerHTML="";
+  setStatus("جاري تحميل قائمة القنوات...");
+  try{
+    const res=await fetch(url,{cache:"no-store"});
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const text=await res.text();
+    channels=parseM3U(text);
+    renderFilters();
+    render();
+    setStatus(`تم تحميل ${channels.length.toLocaleString()} قناة`);
+  }catch(e){
+    console.error(e);
+    setStatus("تعذر تحميل القائمة. جرّب دولة أخرى أو اضغط تحديث.",true);
+    $("list").innerHTML='<div style="padding:25px;text-align:center;color:#8993a3">تعذر جلب القائمة من المصدر.</div>';
+  }
+}
+
+function renderFilters(){
+  const local = `<button class="filter ${localMode&&!showingFav?"active":""}" onclick="localMode=true;showingFav=false;renderFilters();render();setStatus("عرض القائمة المستوردة")">📂 القائمة المستوردة</button>`;
+  $("filters").innerHTML=local + COUNTRIES.map(([k,n])=>
+    `<button class="filter ${!localMode&&k===currentSource&&!showingFav?"active":""}" onclick="loadSource('${k}')">${n}</button>`
+  ).join("");
+}
+
+function filtered(){
+  let arr=channels;
+  if(showingFav) arr=arr.filter(c=>favorites.includes(c.url));
+  const q=normalize($("search").value);
+  if(q) arr=arr.filter(c=>normalize(c.name).includes(q)||normalize(c.country).includes(q)||normalize(c.group).includes(q));
+  return arr;
+}
+
+function render(){
+  const arr=filtered();
+  $("count").textContent=arr.length.toLocaleString();
+  $("listTitle").textContent=showingFav?"المفضلة":"القنوات";
+  $("list").innerHTML="";
+  if(!arr.length){
+    $("list").innerHTML='<div style="padding:25px;text-align:center;color:#8993a3">لا توجد قنوات مطابقة.</div>';
+    return;
+  }
+  const frag=document.createDocumentFragment();
+  arr.slice(0,3000).forEach((c,i)=>{
+    const b=document.createElement("button");
+    b.className="channel";
+    b.innerHTML=`<img class="logo-img" src="${escapeAttr(c.logo||"")}" onerror="this.style.visibility='hidden'"><div class="ch-name"><b>${escapeHtml(c.name||"قناة")}</b><span>${escapeHtml(c.group||c.country||"بث مباشر")}</span></div><span style="margin-right:auto;color:#778090">${favorites.includes(c.url)?"★":""}</span>`;
+    b.onclick=()=>play(c,b);
+    frag.appendChild(b);
+  });
+  $("list").appendChild(frag);
+  if(arr.length>3000) $("list").insertAdjacentHTML("beforeend",'<div style="padding:14px;text-align:center;color:#8993a3">يتم عرض أول 3000 نتيجة فقط. استخدم البحث.</div>');
+}
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function escapeAttr(s){return escapeHtml(s).replace(/javascript:/gi,"")}
+
+function playerMessage(text, error=false){
+  $("playerStatus").textContent=text;
+  $("playerStatus").style.color=error?"#ff5d6c":"#8993a3";
+}
+
+function isMixedContent(url){
+  return location.protocol==="https:" && /^http:\/\//i.test(url);
+}
+
+function play(c,el){
+  document.querySelectorAll(".channel").forEach(x=>x.classList.remove("active"));
+  el.classList.add("active");
+
+  $("empty").style.display="none";
+  $("nowName").textContent=c.name;
+  $("nowMeta").textContent=c.group||c.country||"بث مباشر";
+  playerMessage("جاري الاتصال بالبث...");
+
+  const video=$("video");
+  if(hls){ try{hls.destroy()}catch(e){} hls=null; }
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+
+  if(isMixedContent(c.url)){
+    playerMessage("هذا البث يستخدم HTTP بينما موقعك يعمل عبر HTTPS، لذلك المتصفح يمنعه.",true);
+    return;
+  }
+
+  video.addEventListener("playing",()=>playerMessage("البث يعمل الآن ✓"),{once:true});
+  video.addEventListener("error",()=>playerMessage("المتصفح رفض تشغيل هذا البث. قد يكون المصدر غير متاح أو يمنع التشغيل من مواقع أخرى.",true),{once:true});
+
+  if(Hls.isSupported()){
+    hls=new Hls({
+      enableWorker:true,
+      lowLatencyMode:true,
+      backBufferLength:30,
+      manifestLoadingTimeOut:10000,
+      manifestLoadingMaxRetry:1,
+      levelLoadingTimeOut:10000,
+      fragLoadingTimeOut:12000
+    });
+
+    hls.attachMedia(video);
+
+    hls.on(Hls.Events.MEDIA_ATTACHED,()=>hls.loadSource(c.url));
+
+    hls.on(Hls.Events.MANIFEST_PARSED,()=>{
+      playerMessage("تم العثور على بث HLS — جاري التشغيل...");
+      video.play().catch(()=>playerMessage("اضغط زر التشغيل داخل الفيديو لبدء البث."));
+    });
+
+    hls.on(Hls.Events.ERROR,(event,data)=>{
+      if(!data.fatal) return;
+
+      let msg="تعذر تشغيل البث.";
+      if(data.type===Hls.ErrorTypes.NETWORK_ERROR){
+        msg="تعذر الوصول إلى خادم البث. قد يكون الرابط متوقفًا أو يمنع طلبات المتصفح (CORS/صلاحيات المصدر).";
+      }else if(data.type===Hls.ErrorTypes.MEDIA_ERROR){
+        msg="تم الوصول إلى البث لكن صيغة الوسائط غير متوافقة مع المتصفح.";
+      }else{
+        msg="مصدر البث غير متاح أو غير مدعوم في المتصفح.";
+      }
+
+      playerMessage(msg,true);
+
+      if(data.type===Hls.ErrorTypes.NETWORK_ERROR && hls){
+        setTimeout(()=>{try{hls.startLoad()}catch(e){}},1200);
+      }
+    });
+
+  }else if(video.canPlayType("application/vnd.apple.mpegurl")){
+    video.src=c.url;
+    video.addEventListener("loadedmetadata",()=>{
+      playerMessage("تم تحميل البث — جاري التشغيل...");
+      video.play().catch(()=>playerMessage("اضغط زر التشغيل داخل الفيديو لبدء البث."));
+    },{once:true});
+    video.load();
+  }else{
+    playerMessage("هذا المتصفح لا يدعم تشغيل HLS.",true);
+  }
+}
+
+
+$("fileInput").addEventListener("change", async (e)=>{
+  const file=e.target.files?.[0];
+  if(!file) return;
+  try{
+    setStatus("جاري قراءة ملف M3U...");
+    const text=await file.text();
+    const parsed=parseM3U(text);
+    if(!parsed.length){
+      setStatus("لم يتم العثور على قنوات داخل الملف.",true);
+      return;
+    }
+    channels=parsed;
+    localMode=true;
+    showingFav=false;
+    $("search").value="";
+    renderFilters();
+    render();
+    setStatus(`تم استيراد ${channels.length.toLocaleString()} قناة من ${file.name}. اختر قناة لتجربة البث.`);
+  }catch(err){
+    console.error(err);
+    setStatus("تعذر قراءة ملف M3U.",true);
+  }
+});
+
+$("search").addEventListener("input",render);
+$("reloadBtn").onclick=()=>loadSource(currentSource);
+$("allBtn").onclick=()=>loadSource("all");
+$("favBtn").onclick=()=>{
+  showingFav=!showingFav;
+  renderFilters();
+  render();
+  setStatus(showingFav?"عرض القنوات المفضلة":"عرض القنوات");
+};
+
+document.addEventListener("dblclick",e=>{
+  const ch=e.target.closest(".channel");
+  if(!ch)return;
+});
+
+window.loadSource=loadSource;
+renderFilters();
+loadSource("om");
+</script>
+</body>
+</html>
